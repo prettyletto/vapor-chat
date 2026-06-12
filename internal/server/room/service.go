@@ -41,11 +41,17 @@ func (s *Service) CreateRoom(input CreateRoomInput) (CreateRoomResult, error) {
 	name := strings.TrimSpace(input.DisplayName)
 
 	if len(name) < 3 || len(name) > 32 {
-		return out, fmt.Errorf("display name must be between 3 and 32 characters")
+		return out, ValidationError{
+			Field:   "display_name",
+			Message: "must between 3 and 32 characters",
+		}
 	}
 
 	if !displayNamePattern.MatchString(name) {
-		return out, fmt.Errorf("display name must be alphanumeric")
+		return out, ValidationError{
+			Field:   "display_name",
+			Message: "must contain only alphanumerical characters",
+		}
 	}
 
 	expiresAt, err := expirationFromPreset(input.TTLPreset)
@@ -123,6 +129,9 @@ func expirationFromPreset(ttl TTLPreset) (time.Time, error) {
 	case TTL2Hours:
 		return time.Now().Add(time.Minute * 120), nil
 	default:
-		return time.Time{}, fmt.Errorf("ttl preset is not valid")
+		return time.Time{}, ValidationError{
+			Field:   "ttl_preset",
+			Message: "is not valid",
+		}
 	}
 }
