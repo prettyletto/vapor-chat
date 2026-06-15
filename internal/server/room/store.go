@@ -2,8 +2,9 @@ package room
 
 import "errors"
 
-var ErrRoomCodeAlreadyExists = errors.New("code Already exists for a active room")
+var ErrRoomCodeAlreadyExists = errors.New("room code already exists")
 
 type Store interface {
 	CreateRoom(room Room) error
+	JoinRoom(code RoomCode, participant Participant, session Session) (Room, error)
 }

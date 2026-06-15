@@ -1,6 +1,20 @@
 package room
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+const (
+	ValidationFieldDisplayName = "display_name"
+	ValidationFieldTTLPreset   = "ttl_preset"
+)
+
+var (
+	ErrInactiveRoom      = errors.New("this room is inactive")
+	ErrRoomFull         = errors.New("room full")
+	ErrDisplayNameTaken = errors.New("display name already taken")
+)
 
 type ValidationError struct {
 	Field   string

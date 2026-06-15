@@ -31,27 +31,47 @@ type CreateRoomResult struct {
 	SessionToken SessionToken
 }
 
+type JoinRoomInput struct {
+	Code        RoomCode
+	DisplayName string
+}
+
+type JoinRoomResult struct {
+	Code         RoomCode
+	ExpiresAt    time.Time
+	SessionToken SessionToken
+}
+
 func NewService(store Store) *Service {
 	return &Service{store: store}
+}
+
+func validateName(displayName string) (string, error) {
+	name := strings.TrimSpace(displayName)
+
+	if len(name) < 3 || len(name) > 32 {
+		return name, ValidationError{
+			Field:   ValidationFieldDisplayName,
+			Message: "must be between 3 and 32 characters",
+		}
+	}
+
+	if !displayNamePattern.MatchString(name) {
+		return name, ValidationError{
+			Field:   ValidationFieldDisplayName,
+			Message: "must contain only alphanumeric characters",
+		}
+	}
+
+	return name, nil
 }
 
 func (s *Service) CreateRoom(input CreateRoomInput) (CreateRoomResult, error) {
 	var out CreateRoomResult
 
-	name := strings.TrimSpace(input.DisplayName)
-
-	if len(name) < 3 || len(name) > 32 {
-		return out, ValidationError{
-			Field:   "display_name",
-			Message: "must between 3 and 32 characters",
-		}
-	}
-
-	if !displayNamePattern.MatchString(name) {
-		return out, ValidationError{
-			Field:   "display_name",
-			Message: "must contain only alphanumerical characters",
-		}
+	name, err := validateName(input.DisplayName)
+	if err != nil {
+		return out, err
 	}
 
 	expiresAt, err := expirationFromPreset(input.TTLPreset)
@@ -104,8 +124,41 @@ func (s *Service) CreateRoom(input CreateRoomInput) (CreateRoomResult, error) {
 	return out, fmt.Errorf("could not create room after 5 code collisions")
 }
 
+func (s *Service) JoinRoom(input JoinRoomInput) (JoinRoomResult, error) {
+	var out JoinRoomResult
+
+	name, err := validateName(input.DisplayName)
+	if err != nil {
+		return out, err
+	}
+
+	participantID := ParticipantID(uuid.NewString())
+	sessionToken := SessionToken(uuid.NewString())
+
+	participant := Participant{
+		ID:          participantID,
+		DisplayName: name,
+	}
+
+	session := Session{
+		Token:         sessionToken,
+		ParticipantID: participant.ID,
+	}
+
+	room, err := s.store.JoinRoom(input.Code, participant, session)
+	if err != nil {
+		return out, err
+	}
+
+	out.Code = room.Code
+	out.ExpiresAt = room.ExpiresAt
+	out.SessionToken = session.Token
+
+	return out, nil
+}
+
 func generateRoomCode() (RoomCode, error) {
-	code := make([]byte, 10)
+	code := make([]byte, 6)
 
 	for i := range code {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
@@ -130,7 +183,7 @@ func expirationFromPreset(ttl TTLPreset) (time.Time, error) {
 		return time.Now().Add(time.Minute * 120), nil
 	default:
 		return time.Time{}, ValidationError{
-			Field:   "ttl_preset",
+			Field:   ValidationFieldTTLPreset,
 			Message: "is not valid",
 		}
 	}

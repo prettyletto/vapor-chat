@@ -25,8 +25,8 @@ Phase 1 proves that ephemeral room-based chat works reliably across terminal and
 - The room event stream exposes high-level file events, not raw transfer chunks.
 - File recipients choose to fetch a shared file; files are not auto-pushed.
 - The join code is the room access secret.
-- Join codes must be hard to guess and only need to be unique among active rooms.
-- Phase 1 join codes are randomly generated 10-character uppercase alphanumeric values.
+- Join codes favor manual readability over stronger secrecy and only need to be unique among active rooms.
+- Phase 1 join codes are randomly generated 6-character uppercase alphanumeric values.
 - A join code may be reused later for a different room after the original room is gone.
 - Room creation is request/response first; the live room stream comes after creation.
 - Creating a room automatically joins the creator as the first participant.
@@ -116,6 +116,32 @@ Tasks:
 
 Goal:
 Another participant can join an active room using the join code and a temporary display name.
+
+JoinRoom request:
+
+- Join code
+- Display name
+
+JoinRoom success response:
+
+- Join code
+- Expiration timestamp
+- Participant session token
+
+JoinRoom rules:
+
+- Display name validation matches CreateRoom validation.
+- If the display name is already in use in the room, JoinRoom fails.
+- If the join code does not match an active room, JoinRoom fails because the room does not exist or is no longer active.
+- If the room already has 8 participants, JoinRoom fails because the room is full.
+- If the room exists in memory but its expiration time has passed, JoinRoom rejects it.
+- A successful join does not change the room expiration time.
+- A successful join immediately adds the participant to room membership and creates the participant session as one atomic join operation.
+- JoinRoom uses an atomic store join operation rather than separate read and update steps.
+- JoinRoom rejects repeated joins using the same display name rather than treating them as reconnects.
+- Wrong join code, expired room, and already-destroyed room all collapse to the same inactive-room join failure outcome.
+- JoinRoom keeps request validation errors separate from room-state failures.
+- JoinRoom room-state failures use a structured error shape with a machine-readable reason and a human-readable message.
 
 Done when:
 - Join succeeds for a valid active room.

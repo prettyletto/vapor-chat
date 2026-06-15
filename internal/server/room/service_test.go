@@ -1,6 +1,7 @@
 package room
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -32,8 +33,8 @@ func TestServiceCreateRoomSucceeds(t *testing.T) {
 		t.Fatalf("expected CreateRoom to succeed, got %v", err)
 	}
 
-	if result.Code == "" {
-		t.Fatal("expected room code to be set")
+	if len(result.Code) != 6 {
+		t.Fatalf("expected a 6-character room code, got %q", result.Code)
 	}
 
 	if result.SessionToken == "" {
@@ -53,6 +54,7 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       CreateRoomInput
+		wantField   string
 		wantErrPart string
 	}{
 		{
@@ -61,7 +63,8 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 				DisplayName: "   ",
 				TTLPreset:   TTL30Minutes,
 			},
-			wantErrPart: "display name",
+			wantField:   ValidationFieldDisplayName,
+			wantErrPart: "between 3 and 32 characters",
 		},
 		{
 			name: "too short",
@@ -69,7 +72,8 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 				DisplayName: "ab",
 				TTLPreset:   TTL30Minutes,
 			},
-			wantErrPart: "display name",
+			wantField:   ValidationFieldDisplayName,
+			wantErrPart: "between 3 and 32 characters",
 		},
 		{
 			name: "too long",
@@ -77,7 +81,8 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 				DisplayName: "abcdefghijklmnopqrstuvwxyz1234567",
 				TTLPreset:   TTL30Minutes,
 			},
-			wantErrPart: "display name",
+			wantField:   ValidationFieldDisplayName,
+			wantErrPart: "between 3 and 32 characters",
 		},
 		{
 			name: "non alphanumeric",
@@ -85,7 +90,8 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 				DisplayName: "alex!",
 				TTLPreset:   TTL30Minutes,
 			},
-			wantErrPart: "alphanumeric",
+			wantField:   ValidationFieldDisplayName,
+			wantErrPart: "alphanumerical",
 		},
 		{
 			name: "invalid ttl",
@@ -93,7 +99,8 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 				DisplayName: "Alex123",
 				TTLPreset:   TTLPreset("9 hours"),
 			},
-			wantErrPart: "ttl",
+			wantField:   TTLPresetErr,
+			wantErrPart: "not valid",
 		},
 	}
 
@@ -107,8 +114,17 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 				t.Fatal("expected error, got nil")
 			}
 
-			if !strings.Contains(strings.ToLower(err.Error()), tt.wantErrPart) {
-				t.Fatalf("expected error containing %q, got %q", tt.wantErrPart, err.Error())
+			var validationErr ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected ValidationError, got %T: %v", err, err)
+			}
+
+			if validationErr.Field != tt.wantField {
+				t.Fatalf("expected validation field %q, got %q", tt.wantField, validationErr.Field)
+			}
+
+			if !strings.Contains(validationErr.Message, tt.wantErrPart) {
+				t.Fatalf("expected validation message containing %q, got %q", tt.wantErrPart, validationErr.Message)
 			}
 		})
 	}
@@ -128,8 +144,8 @@ func TestServiceCreateRoomRetriesOnCollision(t *testing.T) {
 		t.Fatalf("expected CreateRoom to succeed after retries, got %v", err)
 	}
 
-	if result.Code == "" {
-		t.Fatal("expected room code to be set")
+	if len(result.Code) != 6 {
+		t.Fatalf("expected a 6-character room code, got %q", result.Code)
 	}
 
 	if store.createCalls != 3 {
