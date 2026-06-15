@@ -15,6 +15,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /rooms", roomHandler.CreateRoom)
+	mux.HandleFunc("POST /rooms/join", roomHandler.JoinRoom)
 
 	addr := ":8080"
 

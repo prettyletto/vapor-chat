@@ -4,11 +4,14 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeStore struct {
 	createCalls int
 	failUntil   int
+	joinRoom    Room
+	joinErr     error
 }
 
 func (f *fakeStore) CreateRoom(room Room) error {
@@ -17,6 +20,13 @@ func (f *fakeStore) CreateRoom(room Room) error {
 		return ErrRoomCodeAlreadyExists
 	}
 	return nil
+}
+
+func (f *fakeStore) JoinRoom(code RoomCode, participant Participant, session Session) (Room, error) {
+	if f.joinErr != nil {
+		return Room{}, f.joinErr
+	}
+	return f.joinRoom, nil
 }
 
 func TestServiceCreateRoomSucceeds(t *testing.T) {
@@ -91,7 +101,7 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 				TTLPreset:   TTL30Minutes,
 			},
 			wantField:   ValidationFieldDisplayName,
-			wantErrPart: "alphanumerical",
+			wantErrPart: "alphanumeric",
 		},
 		{
 			name: "invalid ttl",
@@ -99,7 +109,7 @@ func TestServiceCreateRoomValidation(t *testing.T) {
 				DisplayName: "Alex123",
 				TTLPreset:   TTLPreset("9 hours"),
 			},
-			wantField:   TTLPresetErr,
+			wantField:   ValidationFieldTTLPreset,
 			wantErrPart: "not valid",
 		},
 	}
@@ -165,5 +175,134 @@ func TestServiceCreateRoomFailsAfterFiveCollisions(t *testing.T) {
 	_, err := service.CreateRoom(input)
 	if err == nil {
 		t.Fatal("expected error after five collisions, got nil")
+	}
+}
+
+func TestServiceJoinRoomSucceeds(t *testing.T) {
+	expiresAt := time.Now().Add(30 * time.Minute)
+
+	store := &fakeStore{
+		joinRoom: Room{
+			Code:      RoomCode("ABC123"),
+			ExpiresAt: expiresAt,
+			Participants: []Participant{
+				{ID: ParticipantID("creator-1"), DisplayName: "Alex123"},
+				{ID: ParticipantID("participant-1"), DisplayName: "Joe123"},
+			},
+			Sessions: []Session{
+				{Token: SessionToken("token-1"), ParticipantID: ParticipantID("creator-1")},
+				{Token: SessionToken("token-2"), ParticipantID: ParticipantID("participant-1")},
+			},
+		},
+	}
+	service := NewService(store)
+
+	input := JoinRoomInput{
+		Code:        RoomCode("ABC123"),
+		DisplayName: "Joe123",
+	}
+
+	result, err := service.JoinRoom(input)
+	if err != nil {
+		t.Fatalf("expected JoinRoom to succeed, got %v", err)
+	}
+
+	if result.Code != RoomCode("ABC123") {
+		t.Fatalf("expected code %q, got %q", RoomCode("ABC123"), result.Code)
+	}
+
+	if result.ExpiresAt != expiresAt {
+		t.Fatalf("expected expiresAt %v, got %v", expiresAt, result.ExpiresAt)
+	}
+
+	if result.SessionToken == "" {
+		t.Fatal("expected session token to be set")
+	}
+}
+
+func TestServiceJoinRoomValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       JoinRoomInput
+		wantErrPart string
+	}{
+		{
+			name: "empty after trim",
+			input: JoinRoomInput{
+				Code:        RoomCode("ABC123"),
+				DisplayName: "   ",
+			},
+			wantErrPart: "display_name",
+		},
+		{
+			name: "too short",
+			input: JoinRoomInput{
+				Code:        RoomCode("ABC123"),
+				DisplayName: "ab",
+			},
+			wantErrPart: "display_name",
+		},
+		{
+			name: "non alphanumeric",
+			input: JoinRoomInput{
+				Code:        RoomCode("ABC123"),
+				DisplayName: "joe!",
+			},
+			wantErrPart: "alphanumeric",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewService(&fakeStore{})
+
+			_, err := service.JoinRoom(tt.input)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(strings.ToLower(err.Error()), tt.wantErrPart) {
+				t.Fatalf("expected error containing %q, got %q", tt.wantErrPart, err.Error())
+			}
+		})
+	}
+}
+
+func TestServiceJoinRoomPropagatesInactiveRoom(t *testing.T) {
+	store := &fakeStore{joinErr: ErrInactiveRoom}
+	service := NewService(store)
+
+	_, err := service.JoinRoom(JoinRoomInput{
+		Code:        RoomCode("ABC123"),
+		DisplayName: "Joe123",
+	})
+	if !errors.Is(err, ErrInactiveRoom) {
+		t.Fatalf("expected ErrInactiveRoom, got %v", err)
+	}
+}
+
+func TestServiceJoinRoomPropagatesRoomFull(t *testing.T) {
+	store := &fakeStore{joinErr: ErrRoomFull}
+	service := NewService(store)
+
+	_, err := service.JoinRoom(JoinRoomInput{
+		Code:        RoomCode("ABC123"),
+		DisplayName: "Joe123",
+	})
+	if !errors.Is(err, ErrRoomFull) {
+		t.Fatalf("expected ErrRoomFull, got %v", err)
+	}
+}
+
+func TestServiceJoinRoomPropagatesDisplayNameTaken(t *testing.T) {
+	store := &fakeStore{joinErr: ErrDisplayNameTaken}
+	service := NewService(store)
+
+	_, err := service.JoinRoom(JoinRoomInput{
+		Code:        RoomCode("ABC123"),
+		DisplayName: "Joe123",
+	})
+	if !errors.Is(err, ErrDisplayNameTaken) {
+		t.Fatalf("expected ErrDisplayNameTaken, got %v", err)
 	}
 }
