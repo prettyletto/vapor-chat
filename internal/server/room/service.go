@@ -42,6 +42,11 @@ type JoinRoomResult struct {
 	SessionToken SessionToken
 }
 
+type AuthenticateSessionInput struct {
+	Code         RoomCode
+	SessionToken SessionToken
+}
+
 func NewService(store Store) *Service {
 	return &Service{store: store}
 }
@@ -64,6 +69,10 @@ func validateName(displayName string) (string, error) {
 	}
 
 	return name, nil
+}
+
+func (s *Service) AuthenticateSession(input AuthenticateSessionInput) (SessionContext, error) {
+	return s.store.AuthenticateSession(input.Code, input.SessionToken)
 }
 
 func (s *Service) CreateRoom(input CreateRoomInput) (CreateRoomResult, error) {

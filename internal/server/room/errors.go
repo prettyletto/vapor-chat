@@ -11,9 +11,10 @@ const (
 )
 
 var (
-	ErrInactiveRoom      = errors.New("this room is inactive")
+	ErrInactiveRoom     = errors.New("this room is inactive")
 	ErrRoomFull         = errors.New("room full")
 	ErrDisplayNameTaken = errors.New("display name already taken")
+	ErrInvalidSession   = errors.New("invalid session")
 )
 
 type ValidationError struct {

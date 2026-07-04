@@ -33,3 +33,10 @@ type Room struct {
 	Participants         []Participant
 	Sessions             []Session
 }
+
+type SessionContext struct {
+	Code          RoomCode
+	ParticipantID ParticipantID
+	DisplayName  string
+	ExpiresAt     time.Time
+}

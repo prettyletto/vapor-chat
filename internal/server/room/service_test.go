@@ -12,6 +12,8 @@ type fakeStore struct {
 	failUntil   int
 	joinRoom    Room
 	joinErr     error
+	authContext SessionContext
+	authErr     error
 }
 
 func (f *fakeStore) CreateRoom(room Room) error {
@@ -27,6 +29,13 @@ func (f *fakeStore) JoinRoom(code RoomCode, participant Participant, session Ses
 		return Room{}, f.joinErr
 	}
 	return f.joinRoom, nil
+}
+
+func (f *fakeStore) AuthenticateSession(code RoomCode, token SessionToken) (SessionContext, error) {
+	if f.authErr != nil {
+		return SessionContext{}, f.authErr
+	}
+	return f.authContext, nil
 }
 
 func TestServiceCreateRoomSucceeds(t *testing.T) {
@@ -304,5 +313,68 @@ func TestServiceJoinRoomPropagatesDisplayNameTaken(t *testing.T) {
 	})
 	if !errors.Is(err, ErrDisplayNameTaken) {
 		t.Fatalf("expected ErrDisplayNameTaken, got %v", err)
+	}
+}
+
+func TestServiceAuthenticateSessionSucceeds(t *testing.T) {
+	expiresAt := time.Now().Add(30 * time.Minute)
+	store := &fakeStore{
+		authContext: SessionContext{
+			Code:          RoomCode("ABC123"),
+			ParticipantID: ParticipantID("participant-1"),
+			DisplayName:   "Joe123",
+			ExpiresAt:     expiresAt,
+		},
+	}
+	service := NewService(store)
+
+	result, err := service.AuthenticateSession(AuthenticateSessionInput{
+		Code:         RoomCode("ABC123"),
+		SessionToken: SessionToken("token-1"),
+	})
+	if err != nil {
+		t.Fatalf("expected AuthenticateSession to succeed, got %v", err)
+	}
+
+	if result.Code != RoomCode("ABC123") {
+		t.Fatalf("expected code %q, got %q", RoomCode("ABC123"), result.Code)
+	}
+
+	if result.ParticipantID != ParticipantID("participant-1") {
+		t.Fatalf("expected participant ID %q, got %q", ParticipantID("participant-1"), result.ParticipantID)
+	}
+
+	if result.DisplayName != "Joe123" {
+		t.Fatalf("expected display name %q, got %q", "Joe123", result.DisplayName)
+	}
+
+	if result.ExpiresAt != expiresAt {
+		t.Fatalf("expected expiresAt %v, got %v", expiresAt, result.ExpiresAt)
+	}
+}
+
+func TestServiceAuthenticateSessionPropagatesInactiveRoom(t *testing.T) {
+	store := &fakeStore{authErr: ErrInactiveRoom}
+	service := NewService(store)
+
+	_, err := service.AuthenticateSession(AuthenticateSessionInput{
+		Code:         RoomCode("ABC123"),
+		SessionToken: SessionToken("token-1"),
+	})
+	if !errors.Is(err, ErrInactiveRoom) {
+		t.Fatalf("expected ErrInactiveRoom, got %v", err)
+	}
+}
+
+func TestServiceAuthenticateSessionPropagatesInvalidSession(t *testing.T) {
+	store := &fakeStore{authErr: ErrInvalidSession}
+	service := NewService(store)
+
+	_, err := service.AuthenticateSession(AuthenticateSessionInput{
+		Code:         RoomCode("ABC123"),
+		SessionToken: SessionToken("bad-token"),
+	})
+	if !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("expected ErrInvalidSession, got %v", err)
 	}
 }

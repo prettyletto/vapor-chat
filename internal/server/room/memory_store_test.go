@@ -69,9 +69,8 @@ func TestMemoryStoreJoinRoomSucceeds(t *testing.T) {
 	store := NewMemoryStore()
 
 	room := Room{
-		Code:                 RoomCode("ABCDEFGHIJ"),
-		ExpiresAt:            time.Now().Add(30 * time.Minute),
-		CreatorParticipantID: ParticipantID("creator-1"),
+		Code:      RoomCode("ABCDEFGHIJ"),
+		ExpiresAt: time.Now().Add(30 * time.Minute), CreatorParticipantID: ParticipantID("creator-1"),
 		Participants: []Participant{
 			{
 				ID:          ParticipantID("creator-1"),
@@ -247,3 +246,4 @@ func TestMemoryStoreJoinRoomRejectsFullRoom(t *testing.T) {
 		t.Fatalf("expected ErrRoomFull, got %v", err)
 	}
 }
+

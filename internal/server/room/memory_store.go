@@ -17,6 +17,37 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
+func (m *MemoryStore) AuthenticateSession(code RoomCode, token SessionToken) (SessionContext, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	room, exists := m.rooms[code]
+	if !exists {
+		return SessionContext{}, ErrInactiveRoom
+	}
+
+	if time.Now().After(room.ExpiresAt) {
+		return SessionContext{}, ErrInactiveRoom
+	}
+
+	session, err := retrieveSession(token, room.Sessions)
+	if err != nil {
+		return SessionContext{}, err
+	}
+
+	participant, err := retrieveParticipant(session.ParticipantID, room.Participants)
+	if err != nil {
+		return SessionContext{}, err
+	}
+
+	return SessionContext{
+		Code:          room.Code,
+		ParticipantID: participant.ID,
+		DisplayName:   participant.DisplayName,
+		ExpiresAt:     room.ExpiresAt,
+	}, nil
+}
+
 func (m *MemoryStore) CreateRoom(room Room) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -68,4 +99,24 @@ func isNameAlreadyTaken(displayName string, participants []Participant) bool {
 	}
 
 	return false
+}
+
+func retrieveSession(st SessionToken, sessions []Session) (Session, error) {
+	for _, session := range sessions {
+		if st == session.Token {
+			return session, nil
+		}
+	}
+
+	return Session{}, ErrInvalidSession
+}
+
+func retrieveParticipant(participantID ParticipantID, participants []Participant) (Participant, error) {
+	for _, participant := range participants {
+		if participantID == participant.ID {
+			return participant, nil
+		}
+	}
+
+	return Participant{}, ErrInvalidSession
 }

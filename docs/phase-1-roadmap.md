@@ -160,6 +160,32 @@ Tasks:
 Goal:
 An authenticated session can attach to the room's live event stream.
 
+Live connection rules:
+
+- Live room connections use WebSocket.
+- The client must authenticate by sending a required first control frame containing the room code and session token.
+- The first control frame is not a chat message.
+- The server must verify that the session token belongs to the referenced active room.
+- If the client does not authenticate within a short timeout, the server closes the connection.
+- After successful live authentication, the server broadcasts a participant-joined room event to connected room participants.
+- When a live WebSocket connection closes, the server broadcasts a participant-left room event.
+- When a live WebSocket connection closes, the participant is removed from room membership immediately; Phase 1 has no reconnect window.
+
+Session authentication rules:
+
+- `CreateRoom` and `JoinRoom` establish room membership and session state.
+- WebSocket authentication consumes that existing session state; it does not call `JoinRoom` again.
+- The room service exposes `AuthenticateSession` for live connection authentication.
+- `AuthenticateSession` validates the room code and session token, then returns participant context.
+- `AuthenticateSession` does not mark the session as live; live connection tracking belongs to the WebSocket layer.
+- Invalid session tokens are reported with `ErrInvalidSession`.
+- Connected WebSocket clients are tracked by a separate live hub component, not by `room.Service` or the room store.
+- The live hub lives under `internal/server/live`.
+- The live hub uses a small client interface rather than depending directly on WebSocket connection types.
+- Shared WebSocket control messages and room events live in `internal/protocol`.
+- Slice 3 repaginates the existing protocol definitions before building live hub behavior.
+- WebSocket control messages and room events are separate protocol concepts even though both are shared.
+
 Done when:
 - A client can open a live connection using its session token.
 - Invalid or stale session tokens are rejected.
